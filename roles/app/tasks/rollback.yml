@@ -1,5 +1,7 @@
 ---
-# Goes back one release (the newest one older than "current") with a health check.
+# Goes back to the newest working release older than "current", with a health check.
+# Releases that failed their health check (deployments.log) are skipped. If the old
+# release does not come up either, "current" is switched back and the run stops.
 - name: Find releases
   ansible.builtin.find:
     paths: "{{ app_root }}/releases"
@@ -11,16 +13,24 @@
     path: "{{ app_root }}/current"
   register: app_current
 
-- name: Pick the release before the current one
+- name: Releases that failed their health check
+  ansible.builtin.include_tasks: failed_releases.yml
+
+- name: Pick the newest working release before the current one
   ansible.builtin.set_fact:
-    app_rollback_to: "{{ app_sorted | select('lt', app_current.stat.lnk_source) | list | last | default('') }}"
+    app_rollback_to: >-
+      {{ app_sorted | reject('in', app_failed_releases)
+         | select('lt', app_current.stat.lnk_source | default('')) | list | last | default('') }}
   vars:
     app_sorted: "{{ app_releases.files | map(attribute='path') | sort }}"
 
-- name: There must be an older release
+- name: There must be a working release to go back to
   ansible.builtin.assert:
     that: app_rollback_to | length > 0
-    fail_msg: "No release older than {{ app_current.stat.lnk_source | default('nothing') | basename }} on {{ inventory_hostname }}"
+    fail_msg: >-
+      There is no working release older than {{ app_current.stat.lnk_source | default('nothing') | basename }}
+      on {{ inventory_hostname }}, so there is nothing to go back to.
+      Deploy a working release instead: bash scripts/build-app.sh && bash scripts/deploy.sh {{ target | default('staging') }}
     quiet: true
 
 - name: Read the version of the release we go back to
@@ -28,15 +38,31 @@
     src: "{{ app_rollback_to }}/VERSION"
   register: app_rollback_version
 
-- name: Switch back
-  ansible.builtin.include_tasks: switch.yml
-  vars:
-    app_switch_to: "{{ app_rollback_to }}"
+- name: Go back, behind the health check
+  block:
+    - name: Switch back
+      ansible.builtin.include_tasks: switch.yml
+      vars:
+        app_switch_to: "{{ app_rollback_to }}"
 
-- name: Check the old release is healthy
-  ansible.builtin.include_tasks: health.yml
-  vars:
-    app_expected_version: "{{ app_rollback_version.content | b64decode | trim }}"
+    - name: Check the old release is healthy
+      ansible.builtin.include_tasks: health.yml
+      vars:
+        app_expected_version: "{{ app_rollback_version.content | b64decode | trim }}"
+
+  rescue:
+    - name: Return to the release that was running
+      ansible.builtin.include_tasks: switch.yml
+      vars:
+        app_switch_to: "{{ app_current.stat.lnk_source }}"
+      when: app_current.stat.islnk | default(false)
+
+    - name: Stop the rollback
+      ansible.builtin.fail:
+        msg: >-
+          {{ app_rollback_to | basename }} failed its health check on {{ inventory_hostname }},
+          so {{ inventory_hostname }} stays on {{ app_current.stat.lnk_source | default('nothing') | basename }}.
+          The remaining servers were not touched.
 
 - name: Record the rollback
   ansible.builtin.lineinfile:

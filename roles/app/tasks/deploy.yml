@@ -3,6 +3,7 @@
 #   1. verify the artifact's checksum   2. unpack into releases/<time>-<version>
 #   3. switch "current" + restart       4. health check
 #   5. failed? switch back to the previous release and stop the rollout
+#   6. passed? delete releases that failed earlier, keep the newest app_keep_releases
 - name: Read the version from the artifact name (serverforge-app-<version>.tar.gz)
   ansible.builtin.set_fact:
     app_version: "{{ app_artifact | basename | regex_replace('^serverforge-app-(.+)\\.tar\\.gz$', '\\1') }}"
@@ -70,13 +71,14 @@
     - name: Record the failed release
       ansible.builtin.lineinfile:
         path: "{{ app_data_dir }}/deployments.log"
-        line: "{{ {'at': app_now, 'release': app_release | basename, 'result': 'failed-health-check-rolled-back'} | to_json }}"
+        line: "{{ {'at': app_now, 'release': app_release | basename, 'result': app_result} | to_json }}"
         create: true
         owner: root
         group: root
         mode: "0644"
       vars:
         app_now: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
+        app_result: "{{ 'failed-health-check-rolled-back' if app_before.stat.islnk | default(false) else 'failed-health-check' }}"
 
     - name: Stop the rollout
       ansible.builtin.fail:
@@ -87,7 +89,9 @@
         app_rolled_back_msg: >-
           {{ 'Rolled back to ' ~ (app_before.stat.lnk_source | basename) ~ '.'
              if app_before.stat.islnk | default(false)
-             else 'There was no earlier release to roll back to.' }}
+             else 'There was no earlier release to roll back to, so ' ~ inventory_hostname
+                  ~ ' is still on this failing release. Deploy a working release: bash scripts/build-app.sh'
+                  ~ ' && bash scripts/deploy.sh ' ~ (target | default('staging')) ~ '.' }}
 
 - name: Record the deployment
   ansible.builtin.lineinfile:
@@ -104,9 +108,19 @@
     file_type: directory
   register: app_releases
 
-- name: Delete releases beyond the newest {{ app_keep_releases }}
+- name: Releases that failed their health check
+  ansible.builtin.include_tasks: failed_releases.yml
+
+# Failed releases are never rolled back to, so they would only push working ones out.
+- name: Delete failed releases and working ones beyond the newest {{ app_keep_releases }}
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
-  loop: "{{ (app_releases.files | map(attribute='path') | sort)[: -(app_keep_releases | int)] }}"
+  loop: >-
+    {{ (app_sorted | select('in', app_failed_releases) | list)
+       + (app_sorted | reject('in', app_failed_releases) | list)[: -(app_keep_releases | int)] }}
+  loop_control:
+    label: "{{ item | basename }}"
+  vars:
+    app_sorted: "{{ app_releases.files | map(attribute='path') | sort }}"
   when: item != app_release

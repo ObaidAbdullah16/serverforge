@@ -63,9 +63,11 @@ bash scripts/lab-down.sh --all       # also deletes the images it built
 Break things on purpose:
 
 ```bash
+# (needs a working release on the servers first: the deploy commands above)
 VERSION=1.1.0 bash scripts/build-app.sh --broken && bash scripts/deploy.sh production
 #   -> fails the health check on web-prod-1, rolls it back, never touches web-prod-2
-bash scripts/rollback.sh production    # go back one release
+VERSION=1.2.0 bash scripts/build-app.sh && bash scripts/deploy.sh production
+bash scripts/rollback.sh production    # back to 1.0.0: rollback skips releases that failed their health check
 bash scripts/simulate-drift.sh         # "quick manual fix" on web-prod-1
 bash scripts/drift.sh                  # exit 2: drift found (details in reports/)
 bash scripts/site.sh                   # put the servers back to what the code says

@@ -1,0 +1,16 @@
+---
+# Releases that failed their health check, from deployments.log (written by deploy.yml).
+# Output: app_failed_releases - full paths of their release directories.
+# Rollback never goes back to one of them, and the next good deploy deletes them.
+- name: Read the deployment log
+  ansible.builtin.slurp:
+    src: "{{ app_data_dir }}/deployments.log"
+  register: app_deploy_log
+  failed_when: false
+
+- name: Releases that failed their health check
+  ansible.builtin.set_fact:
+    app_failed_releases: >-
+      {{ (app_deploy_log.content | default('') | b64decode).splitlines()
+         | select | map('from_json') | selectattr('result', 'match', 'failed')
+         | map(attribute='release') | map('regex_replace', '^', app_root ~ '/releases/') | list }}
