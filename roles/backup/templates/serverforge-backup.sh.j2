@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Archives {{ backup_paths | join(', ') }} into {{ backup_dir }}, keeps the newest {{ backup_keep }}.
+set -euo pipefail
+umask 077
+stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+archive="{{ backup_dir }}/serverforge-${stamp}.tar.gz"
+
+tar --create --gzip --file "$archive" --absolute-names {{ backup_paths | map('quote') | join(' ') }}
+sha256sum "$archive" > "${archive}.sha256"
+tar --list --gzip --file "$archive" > /dev/null    # the archive can be read back
+
+# Retention: delete everything but the newest {{ backup_keep }} archives
+ls -1t {{ backup_dir }}/serverforge-*.tar.gz | tail -n +{{ backup_keep + 1 }} | while read -r old; do
+  rm -f -- "$old" "${old}.sha256"
+done
+{% if backup_s3_uri %}
+
+aws s3 cp --only-show-errors "$archive" "{{ backup_s3_uri }}/$(hostname)/"
+aws s3 cp --only-show-errors "${archive}.sha256" "{{ backup_s3_uri }}/$(hostname)/"
+{% endif %}
+echo "backup ok: $archive ($(du -h "$archive" | cut -f1))"

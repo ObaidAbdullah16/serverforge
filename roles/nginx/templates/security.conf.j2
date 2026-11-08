@@ -1,0 +1,17 @@
+# {{ ansible_managed }}
+# Global (http-level) settings for every site on this server.
+server_tokens off;                                  # do not advertise the nginx version
+client_max_body_size {{ nginx_client_max_body_size }};
+client_body_timeout 10s;
+client_header_timeout 10s;
+keepalive_timeout 15s;
+send_timeout 10s;
+
+# One bucket per client IP: {{ nginx_rate_limit }} with bursts of {{ nginx_rate_burst }}
+limit_req_zone $binary_remote_addr zone=sf_api:10m rate={{ nginx_rate_limit }};
+limit_req_status 429;
+
+# ssl_protocols is set in nginx.conf itself (Ubuntu's default still allows TLS 1.0/1.1)
+ssl_session_cache shared:SSL:10m;
+ssl_session_timeout 1d;
+ssl_session_tickets off;

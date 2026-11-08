@@ -1,0 +1,14 @@
+---
+# Waits until /healthz answers 200 with the expected version.
+# Input: app_expected_version
+- name: "Health check: waiting for version {{ app_expected_version }}"
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ app_port }}/healthz"
+    return_content: true
+    status_code: 200
+  register: app_health
+  until: >-
+    app_health.status == 200 and
+    (app_health.json | default({})).get('version') == app_expected_version
+  retries: "{{ app_health_retries }}"
+  delay: "{{ app_health_delay }}"

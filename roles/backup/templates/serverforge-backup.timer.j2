@@ -1,0 +1,12 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Nightly ServerForge backup
+
+[Timer]
+OnCalendar={{ backup_on_calendar }}
+RandomizedDelaySec=15m
+# If the server was off at backup time, run as soon as it is back.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

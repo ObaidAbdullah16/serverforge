@@ -1,0 +1,9 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Back up ServerForge data
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/serverforge-backup
+Nice=10
+IOSchedulingClass=idle

@@ -1,0 +1,17 @@
+# Plugin IDs, one per line. jenkins-plugin-cli resolves versions compatible with
+# the Jenkins version in controller.Dockerfile. To pin exact versions after a
+# working build, run inside the container:
+#   jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt --list
+configuration-as-code
+job-dsl
+workflow-aggregator
+pipeline-stage-view
+git
+ssh-slaves
+ssh-credentials
+credentials-binding
+timestamper
+ansicolor
+junit
+htmlpublisher
+ws-cleanup

@@ -1,0 +1,112 @@
+---
+# Installs one release with a health gate and automatic rollback.
+#   1. verify the artifact's checksum   2. unpack into releases/<time>-<version>
+#   3. switch "current" + restart       4. health check
+#   5. failed? switch back to the previous release and stop the rollout
+- name: Read the version from the artifact name (serverforge-app-<version>.tar.gz)
+  ansible.builtin.set_fact:
+    app_version: "{{ app_artifact | basename | regex_replace('^serverforge-app-(.+)\\.tar\\.gz$', '\\1') }}"
+
+- name: Name the release directory <UTC time>-<version> (sorts oldest to newest)
+  ansible.builtin.set_fact:
+    app_release: "{{ app_root }}/releases/{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}-{{ app_version }}"
+
+- name: Checksum of the artifact on the controller
+  ansible.builtin.stat:
+    path: "{{ app_artifact }}"
+    checksum_algorithm: sha256
+  delegate_to: localhost
+  become: false
+  register: app_artifact_stat
+
+- name: The artifact matches the checksum written when it was built
+  ansible.builtin.assert:
+    that:
+      - app_artifact_stat.stat.exists
+      - app_artifact_stat.stat.checksum == lookup('ansible.builtin.file', app_artifact ~ '.sha256').split()[0]
+    fail_msg: "{{ app_artifact }} is missing or does not match {{ app_artifact }}.sha256 - refusing to deploy it"
+    quiet: true
+
+- name: Remember the release that is running now (for rollback)
+  ansible.builtin.stat:
+    path: "{{ app_root }}/current"
+  register: app_before
+
+- name: Release directory
+  ansible.builtin.file:
+    path: "{{ app_release }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Unpack the release (code owned by root, read-only for the app)
+  ansible.builtin.unarchive:
+    src: "{{ app_artifact }}"
+    dest: "{{ app_release }}"
+    owner: root
+    group: root
+    mode: "u=rwX,go=rX"
+
+- name: Activate the release behind a health gate
+  block:
+    - name: Switch to the new release
+      ansible.builtin.include_tasks: switch.yml
+      vars:
+        app_switch_to: "{{ app_release }}"
+
+    - name: Check the new release is healthy
+      ansible.builtin.include_tasks: health.yml
+      vars:
+        app_expected_version: "{{ app_version }}"
+
+  rescue:
+    - name: Roll back to the previous release
+      ansible.builtin.include_tasks: switch.yml
+      vars:
+        app_switch_to: "{{ app_before.stat.lnk_source }}"
+      when: app_before.stat.islnk | default(false)
+
+    - name: Record the failed release
+      ansible.builtin.lineinfile:
+        path: "{{ app_data_dir }}/deployments.log"
+        line: "{{ {'at': app_now, 'release': app_release | basename, 'result': 'failed-health-check-rolled-back'} | to_json }}"
+        create: true
+        owner: root
+        group: root
+        mode: "0644"
+      vars:
+        app_now: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
+
+    - name: Stop the rollout
+      ansible.builtin.fail:
+        msg: >-
+          Release {{ app_version }} failed its health check on {{ inventory_hostname }}.
+          {{ app_rolled_back_msg }} The remaining servers were not touched.
+      vars:
+        app_rolled_back_msg: >-
+          {{ 'Rolled back to ' ~ (app_before.stat.lnk_source | basename) ~ '.'
+             if app_before.stat.islnk | default(false)
+             else 'There was no earlier release to roll back to.' }}
+
+- name: Record the deployment
+  ansible.builtin.lineinfile:
+    path: "{{ app_data_dir }}/deployments.log"
+    line: "{{ {'at': now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ'), 'release': app_release | basename, 'result': 'ok'} | to_json }}"
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Find old releases
+  ansible.builtin.find:
+    paths: "{{ app_root }}/releases"
+    file_type: directory
+  register: app_releases
+
+- name: Delete releases beyond the newest {{ app_keep_releases }}
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ (app_releases.files | map(attribute='path') | sort)[: -(app_keep_releases | int)] }}"
+  when: item != app_release

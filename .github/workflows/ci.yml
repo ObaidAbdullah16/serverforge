@@ -1,0 +1,144 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-test:
+    name: Lint, unit tests, IaC checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.13"
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
+        with:
+          terraform_version: "<1.18.0"
+          terraform_wrapper: false
+      - run: pip install -r requirements-dev.txt checkov shellcheck-py actionlint-py
+      - name: YAML and Ansible lint
+        run: |
+          yamllint --strict .
+          ansible-lint --offline
+      - name: Python lint and tests
+        run: |
+          ruff check app tools
+          (cd app && pytest -q)
+          pytest -q tools/tests
+      - name: Shell scripts
+        run: shellcheck -x -P SCRIPTDIR scripts/*.sh
+      - name: Ansible syntax
+        run: |
+          for p in playbooks/*.yml; do ansible-playbook --syntax-check -i inventories/lab/hosts.yml "$p"; done
+      - name: Terraform
+        run: |
+          terraform fmt -check -recursive infra
+          terraform -chdir=infra/terraform init -backend=false -input=false >/dev/null
+          terraform -chdir=infra/terraform validate
+          checkov -d infra/terraform --framework terraform --config-file .checkov.yaml --quiet --compact
+      - run: actionlint
+
+  lab-e2e:
+    name: Lab end-to-end (3 servers in Docker)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    needs: lint-and-test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements.txt
+      - name: Start the lab (fresh servers)
+        run: bash scripts/lab-up.sh --fresh
+      - name: Audit before hardening
+        run: bash scripts/audit.sh before
+      - name: Build every server (site.yml)
+        run: bash scripts/site.sh
+      - name: Idempotence - a second run must change nothing
+        shell: bash  # -o pipefail: a failed run must not pass as "nothing changed"
+        run: |
+          bash scripts/site.sh | tee site2.log
+          if grep -E 'changed=[1-9]' site2.log; then
+            echo "::error::site.yml is not idempotent (see the PLAY RECAP above)"
+            exit 1
+          fi
+      - name: Audit after hardening + report
+        run: |
+          bash scripts/audit.sh after
+          python3 tools/hardening_report.py --before reports/raw/before --after reports/raw/after --out reports/before-after --label ci-lab
+          cat reports/before-after/report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Release 1.0.0 to staging and production
+        run: |
+          VERSION=1.0.0 bash scripts/build-app.sh
+          bash scripts/deploy.sh staging
+          bash scripts/deploy.sh production
+      - name: A broken release must be stopped and rolled back
+        run: |
+          VERSION=1.1.0 bash scripts/build-app.sh --broken
+          if bash scripts/deploy.sh staging; then
+            echo "::error::the broken release was not stopped"; exit 1
+          fi
+          curl -ks https://127.0.0.1:8441/healthz | tee /dev/stderr | grep -q '"version": "1.0.0"'
+      - name: Rollback and backup/restore
+        run: |
+          VERSION=1.2.0 bash scripts/build-app.sh
+          bash scripts/deploy.sh production
+          bash scripts/rollback.sh production
+          curl -ks https://127.0.0.1:8442/healthz | grep -q '"version": "1.0.0"'
+          bash -c 'source scripts/lib.sh; play backup-test.yml'
+      - name: Drift is detected, then repaired
+        run: |
+          bash scripts/simulate-drift.sh web-prod-1
+          set +e; bash scripts/drift.sh; rc=$?; set -e
+          [ "$rc" = 2 ] || { echo "::error::drift was not detected (exit $rc)"; exit 1; }
+          bash scripts/site.sh --limit web-prod-1
+          bash scripts/drift.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always()
+        with:
+          name: hardening-report
+          path: reports/
+          if-no-files-found: ignore
+      - name: Lab logs on failure
+        if: failure()
+        run: docker compose -f lab/docker-compose.yml logs --tail 100 || true
+
+  jenkins:
+    name: Jenkins from code (JCasC + agent)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    needs: lint-and-test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements.txt
+      - name: Start the lab with Jenkins
+        env:
+          SERVERFORGE_REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+          SERVERFORGE_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: bash scripts/lab-up.sh --with-jenkins
+      - name: Jobs exist and the agent is online
+        run: bash scripts/jenkins-smoke.sh
+      - name: Jenkins logs on failure
+        if: failure()
+        run: docker compose -f lab/docker-compose.yml --profile jenkins logs --tail 150 jenkins jenkins-agent || true

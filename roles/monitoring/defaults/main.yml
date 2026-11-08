@@ -1,0 +1,11 @@
+---
+# Prometheus node_exporter: CPU, memory, disk, network and systemd metrics.
+# By default it listens on localhost only. To let a Prometheus server scrape it,
+# list that server's address here; ufw is opened for exactly those addresses.
+monitoring_scrape_cidrs: []
+monitoring_port: 9100
+monitoring_listen: "{{ '0.0.0.0' if monitoring_scrape_cidrs | length > 0 else '127.0.0.1' }}:{{ monitoring_port }}"
+# Extra node_exporter flags: the systemd collector, limited to the units we care about.
+monitoring_extra_args:
+  - --collector.systemd
+  - --collector.systemd.unit-include=(serverforge|nginx|ssh|fail2ban)[.]service

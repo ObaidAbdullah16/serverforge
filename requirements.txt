@@ -1,0 +1,4 @@
+# Controller-side tools (installed into .venv by scripts/lib.sh).
+# "ansible" = ansible-core + the community collections used here
+# (ansible.posix, community.general), so no Ansible Galaxy download is needed.
+ansible==14.5.0

@@ -1,0 +1,36 @@
+// Nightly drift detection: "does every server still match the code?"
+// Runs site.yml in check mode (changes nothing) and marks the build UNSTABLE
+// when a server differs, e.g. someone edited sshd_config by hand.
+pipeline {
+  agent { label 'ansible' }
+  triggers { cron('H 2 * * *') }        // around 02:00 every night (H spreads jobs out)
+  options {
+    timestamps()
+    ansiColor('xterm')
+    buildDiscarder(logRotator(numToKeepStr: '30'))
+    timeout(time: 20, unit: 'MINUTES')
+  }
+  environment {
+    INV = 'lab'
+    ANSIBLE_FORCE_COLOR = '1'
+  }
+  stages {
+    stage('Detect drift') {
+      steps {
+        withCredentials([sshUserPrivateKey(credentialsId: 'lab-ssh', keyFileVariable: 'SF_SSH_KEY')]) {
+          script {
+            def rc = sh(script: 'mkdir -p .keys && bash scripts/drift.sh', returnStatus: true)
+            if (rc == 2) {
+              unstable('Drift found: a server no longer matches the code. Fix it with: ansible-playbook playbooks/site.yml')
+            } else if (rc != 0) {
+              error("drift check failed (exit ${rc})")
+            }
+          }
+        }
+      }
+    }
+  }
+  post {
+    always { archiveArtifacts artifacts: 'reports/drift-*.txt', allowEmptyArchive: true }
+  }
+}

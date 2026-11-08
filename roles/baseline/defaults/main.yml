@@ -1,0 +1,99 @@
+---
+# Baseline: the things every Linux server should have before it runs anything.
+# Every value can be overridden in inventories/<env>/group_vars/.
+
+baseline_timezone: Etc/UTC          # servers run on UTC; people convert, logs do not
+
+baseline_packages:
+  - ca-certificates
+  - curl
+  - jq
+  - unattended-upgrades
+  - apt-listchanges
+  - needrestart                     # tells you which services still run old libraries
+  - logrotate
+  - acl                             # lets Ansible "become" an unprivileged user safely
+  - libpam-tmpdir                   # a private /tmp per user session
+  - debsums                         # checks installed files against package checksums
+  - sysstat                         # CPU/disk/memory history (`sar`) for incident reviews
+
+# Install every pending update during the run ("safe" = never removes packages).
+baseline_upgrade_now: true
+
+# Packages that only add attack surface on a server
+baseline_remove_packages:
+  - telnet
+  - ftp
+  - rsh-client
+  - talk
+
+# People who may log in. Each gets a sudo-capable account with key-only SSH.
+# Example (inventories/aws/group_vars/all.yml):
+#   baseline_admins:
+#     - name: obaid
+#       pubkey: "ssh-ed25519 AAAA... obaid@laptop"
+baseline_admins: []
+
+# Only members of this group may log in over SSH (AllowGroups).
+baseline_ssh_group: sshusers
+baseline_ssh_max_auth_tries: 3
+baseline_ssh_login_grace_time: 20
+baseline_ssh_client_alive_interval: 300
+
+# Security patches every night; reboots are left to a person (or set true).
+baseline_auto_reboot: false
+baseline_auto_reboot_time: "03:30"
+
+baseline_journal_max_use: 200M
+
+# Idle interactive shells are closed after this many seconds (0 = never).
+baseline_shell_timeout: 900
+
+# Kernel modules a web server never needs: rare network protocols with a history
+# of vulnerabilities, odd filesystems, and USB storage (data theft).
+baseline_disabled_modules:
+  - dccp
+  - sctp
+  - rds
+  - tipc
+  - cramfs
+  - freevxfs
+  - hfs
+  - hfsplus
+  - jffs2
+  - udf
+  - usb-storage
+
+baseline_banner: |
+  Authorized access only. All activity on this system is monitored and logged.
+  Unauthorized access is prohibited and may be reported to the authorities.
+
+# Kernel and network hardening (written to /etc/sysctl.d/99-serverforge.conf).
+baseline_sysctl:
+  net.ipv4.conf.all.rp_filter: 1
+  net.ipv4.conf.default.rp_filter: 1
+  net.ipv4.conf.all.accept_redirects: 0
+  net.ipv4.conf.default.accept_redirects: 0
+  net.ipv6.conf.all.accept_redirects: 0
+  net.ipv6.conf.default.accept_redirects: 0
+  net.ipv4.conf.all.send_redirects: 0
+  net.ipv4.conf.default.send_redirects: 0
+  net.ipv4.conf.all.accept_source_route: 0
+  net.ipv4.conf.default.accept_source_route: 0
+  net.ipv4.conf.all.log_martians: 1
+  net.ipv4.conf.default.log_martians: 1
+  net.ipv4.icmp_echo_ignore_broadcasts: 1
+  net.ipv4.tcp_syncookies: 1
+  kernel.kptr_restrict: 2
+  kernel.dmesg_restrict: 1
+  kernel.randomize_va_space: 2
+  kernel.yama.ptrace_scope: 1
+  kernel.sysrq: 0
+  fs.protected_hardlinks: 1
+  fs.protected_symlinks: 1
+  fs.suid_dumpable: 0
+
+# Containers share the host's kernel: writing kernel settings from inside one
+# would change the host (or fail). The lab containers therefore only get the
+# file written, and auditd/time sync are skipped. Real VMs get everything.
+baseline_in_container: "{{ ansible_facts['virtualization_type'] | default('') in ['docker', 'container', 'podman', 'lxc', 'containerd'] }}"

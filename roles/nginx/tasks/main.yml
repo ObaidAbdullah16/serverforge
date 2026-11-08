@@ -1,0 +1,107 @@
+---
+# Some servers boot with IPv6 switched off (ipv6.disable=1). nginx's stock config
+# listens on [::]:80, so the package fails to start - and fails to install.
+- name: Does this server have IPv6?
+  ansible.builtin.stat:
+    path: /proc/net/if_inet6
+  register: nginx_ipv6_stat
+
+- name: Remember the answer for the templates
+  ansible.builtin.set_fact:
+    nginx_ipv6: "{{ nginx_ipv6_stat.stat.exists }}"
+
+- name: Install nginx
+  block:
+    # policy-rc.d is Debian's switch for "do not start services while installing
+    # packages". We start nginx ourselves, with our config, a few tasks later.
+    - name: Hold service starts during the install (servers without IPv6)
+      ansible.builtin.copy:
+        content: "#!/bin/sh\nexit 101\n"
+        dest: /usr/sbin/policy-rc.d
+        owner: root
+        group: root
+        mode: "0755"
+      when: not nginx_ipv6
+      changed_when: false
+
+    - name: Install nginx and openssl
+      ansible.builtin.apt:
+        name: [nginx, openssl]
+        state: present
+  always:
+    - name: Allow service starts again
+      ansible.builtin.file:
+        path: /usr/sbin/policy-rc.d
+        state: absent
+      when: not nginx_ipv6
+      changed_when: false
+
+- name: Remove the default "Welcome to nginx" site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Reload nginx
+
+- name: Directories for certificates and ACME challenges
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ nginx_cert_dir }}", mode: "0700" }
+    - { path: /var/www/letsencrypt, mode: "0755" }
+
+# Ubuntu's stock nginx.conf still enables TLS 1.0 and 1.1 (broken, and refused by
+# every modern browser). A directive may appear only once per block, so we fix
+# the line where it is instead of adding a second one in conf.d/.
+- name: Only TLS 1.2 and 1.3 (fix the stock nginx.conf)
+  ansible.builtin.lineinfile:
+    path: /etc/nginx/nginx.conf
+    regexp: '^(\s*)ssl_protocols\s'
+    line: '\1ssl_protocols TLSv1.2 TLSv1.3;'
+    backrefs: true
+  notify: Reload nginx
+
+- name: Let modern clients pick their fastest strong cipher
+  ansible.builtin.lineinfile:
+    path: /etc/nginx/nginx.conf
+    regexp: '^(\s*)ssl_prefer_server_ciphers\s'
+    line: '\1ssl_prefer_server_ciphers off;'
+    backrefs: true
+  notify: Reload nginx
+
+- name: Global security settings
+  ansible.builtin.template:
+    src: security.conf.j2
+    dest: /etc/nginx/conf.d/serverforge-security.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
+
+- name: TLS certificate
+  ansible.builtin.include_tasks: "tls-{{ nginx_tls_mode }}.yml"
+
+- name: Site configuration
+  ansible.builtin.template:
+    src: site.conf.j2
+    dest: /etc/nginx/sites-available/serverforge.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Enable the site
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/serverforge.conf
+    dest: /etc/nginx/sites-enabled/serverforge.conf
+    state: link
+  notify: Reload nginx
+
+- name: Start nginx
+  ansible.builtin.systemd_service:
+    name: nginx
+    enabled: true
+    state: started

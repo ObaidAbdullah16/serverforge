@@ -1,0 +1,66 @@
+---
+# A free, trusted certificate from Let's Encrypt. Needs: the domain's DNS points
+# at this server and port 80 is reachable from the internet.
+- name: Let's Encrypt needs an email for expiry notices
+  ansible.builtin.assert:
+    that: nginx_letsencrypt_email | length > 0
+    fail_msg: Set nginx_letsencrypt_email to use Let's Encrypt
+    quiet: true
+
+- name: Install certbot
+  ansible.builtin.apt:
+    name: certbot
+    state: present
+
+- name: Is there a certificate already?
+  ansible.builtin.stat:
+    path: "/etc/letsencrypt/live/{{ sf_domain }}/fullchain.pem"
+  register: nginx_cert_stat
+
+- name: First run - HTTP-only site for the challenge
+  when: not nginx_cert_stat.stat.exists
+  block:
+    - name: HTTP-only site
+      ansible.builtin.template:
+        src: site.conf.j2
+        dest: /etc/nginx/sites-available/serverforge.conf
+        owner: root
+        group: root
+        mode: "0644"
+      vars:
+        nginx_https_ready: false
+
+    - name: Enable the HTTP-only site
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/serverforge.conf
+        dest: /etc/nginx/sites-enabled/serverforge.conf
+        state: link
+
+    - name: Start or reload nginx with the HTTP-only site
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: reloaded
+        enabled: true
+
+    - name: Request the certificate
+      ansible.builtin.command:
+        cmd: >-
+          certbot certonly --webroot -w /var/www/letsencrypt
+          -d {{ sf_domain }} --email {{ nginx_letsencrypt_email }}
+          --agree-tos --non-interactive
+        creates: "/etc/letsencrypt/live/{{ sf_domain }}/fullchain.pem"
+
+- name: Reload nginx after each renewal (certbot's timer renews automatically)
+  ansible.builtin.copy:
+    content: |
+      #!/bin/sh
+      systemctl reload nginx
+    dest: /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Use the Let's Encrypt certificate
+  ansible.builtin.set_fact:
+    nginx_ssl_certificate: "/etc/letsencrypt/live/{{ sf_domain }}/fullchain.pem"
+    nginx_ssl_certificate_key: "/etc/letsencrypt/live/{{ sf_domain }}/privkey.pem"

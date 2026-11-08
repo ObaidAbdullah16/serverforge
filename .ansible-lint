@@ -1,0 +1,10 @@
+---
+# ansible-lint settings: the strictest built-in profile.
+profile: production
+offline: true
+exclude_paths:
+  - .venv/
+  - .github/
+  - lab/.secrets/
+  - reports/
+  - jenkins/

@@ -1,0 +1,39 @@
+# {{ ansible_managed }}
+# ServerForge SSH hardening. Ubuntu reads /etc/ssh/sshd_config.d/*.conf before the
+# main file and the FIRST value of a setting wins, so this 10- file beats both the
+# main file and cloud images' 50-cloud-init.conf (which can turn passwords back on).
+
+# Who may log in, and how
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+PermitEmptyPasswords no
+AuthenticationMethods publickey
+AllowGroups {{ baseline_ssh_group }}
+
+# Slow down guessing and drop dead sessions
+MaxAuthTries {{ baseline_ssh_max_auth_tries }}
+MaxSessions 2
+LoginGraceTime {{ baseline_ssh_login_grace_time }}
+ClientAliveInterval {{ baseline_ssh_client_alive_interval }}
+ClientAliveCountMax 2
+# ClientAlive* above does the keepalive job inside the encrypted channel
+TCPKeepAlive no
+
+# Features a web server does not need
+X11Forwarding no
+AllowAgentForwarding no
+AllowTcpForwarding no
+PermitTunnel no
+PermitUserEnvironment no
+Compression no
+
+# Log key fingerprints so you can tell who logged in
+LogLevel VERBOSE
+Banner /etc/issue.net
+
+# Modern algorithms only (OpenSSH 8.9+ / Ubuntu 22.04+)
+KexAlgorithms sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org
+Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com
+MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com

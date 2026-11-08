@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  role_name: nginx
+  author: Obaid Abdullah
+  description: nginx reverse proxy with TLS (self-signed or Let's Encrypt), security headers and rate limits
+  license: MIT
+  min_ansible_version: "2.17"
+  platforms:
+    - name: Ubuntu
+      versions: [jammy, noble]
+dependencies: []

@@ -1,0 +1,19 @@
+---
+# Points "current" at a release in one atomic step and restarts the app.
+# Input: app_switch_to (a release directory)
+#
+# `ln -sfn` alone deletes the old link and then creates the new one: for a moment
+# there is no "current". Creating a temporary link and renaming it over the old
+# one with `mv -T` is a single rename() system call, so "current" always exists.
+- name: "Switch current -> {{ app_switch_to | basename }}"
+  ansible.builtin.shell: |
+    set -eu
+    ln -sfn "{{ app_switch_to }}" "{{ app_root }}/current.new"
+    mv -Tf "{{ app_root }}/current.new" "{{ app_root }}/current"
+  changed_when: true
+
+- name: Restart the app on the new release
+  ansible.builtin.systemd_service:
+    name: "{{ app_name }}"
+    state: restarted
+    enabled: true

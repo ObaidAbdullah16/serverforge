@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Usage: serverforge-restore [archive]    (default: the newest backup)
+# Verifies the checksum, stops the app, restores the data, starts the app.
+set -euo pipefail
+archive="${1:-$(ls -1t {{ backup_dir }}/serverforge-*.tar.gz | head -n 1)}"
+[[ -f "$archive" ]] || { echo "no backup found" >&2; exit 1; }
+( cd "$(dirname "$archive")" && sha256sum --check --quiet "$(basename "$archive").sha256" )
+systemctl stop {{ backup_service_to_stop }} || true
+tar --extract --gzip --file "$archive" --absolute-names
+systemctl start {{ backup_service_to_stop }} || true
+echo "restored from $archive"

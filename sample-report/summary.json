@@ -1,0 +1,293 @@
+{
+  "generated": "2026-10-25 21:07 UTC",
+  "label": "lab",
+  "lynis_version": "3.0.9",
+  "os": "Ubuntu 24.04.5 LTS",
+  "hosts": [
+    {
+      "host": "web-prod-1",
+      "after": 80,
+      "before": 60,
+      "change": 20,
+      "warnings_before": 2,
+      "warnings_after": 0,
+      "suggestions_before": 40,
+      "suggestions_after": 28
+    },
+    {
+      "host": "web-prod-2",
+      "after": 80,
+      "before": 60,
+      "change": 20,
+      "warnings_before": 2,
+      "warnings_after": 0,
+      "suggestions_before": 40,
+      "suggestions_after": 28
+    },
+    {
+      "host": "web-stg-1",
+      "after": 80,
+      "before": 60,
+      "change": 20,
+      "warnings_before": 2,
+      "warnings_after": 0,
+      "suggestions_before": 40,
+      "suggestions_after": 28
+    }
+  ],
+  "average_before": 60.0,
+  "average_after": 80.0,
+  "fixed": [
+    {
+      "id": "ACCT-9626",
+      "text": "Enable sysstat to collect accounting (no results)",
+      "hosts": 3
+    },
+    {
+      "id": "AUTH-9328",
+      "text": "Default umask in /etc/login.defs could be more strict like 027",
+      "hosts": 3
+    },
+    {
+      "id": "BANN-7126",
+      "text": "Add a legal banner to /etc/issue, to warn unauthorized users",
+      "hosts": 3
+    },
+    {
+      "id": "BANN-7130",
+      "text": "Add legal banner to /etc/issue.net, to warn unauthorized users",
+      "hosts": 3
+    },
+    {
+      "id": "DEB-0280",
+      "text": "Install libpam-tmpdir to set $TMP and $TMPDIR for PAM sessions",
+      "hosts": 3
+    },
+    {
+      "id": "DEB-0811",
+      "text": "Install apt-listchanges to display any significant changes prior to any upgrade via APT.",
+      "hosts": 3
+    },
+    {
+      "id": "DEB-0831",
+      "text": "Install needrestart, alternatively to debian-goodies, so that you can run needrestart after upgrades to determine which daemons are using old versions of libraries and need restarting.",
+      "hosts": 3
+    },
+    {
+      "id": "DEB-0880",
+      "text": "Install fail2ban to automatically ban hosts that commit multiple authentication errors.",
+      "hosts": 3
+    },
+    {
+      "id": "FIRE-4512",
+      "text": "iptables module(s) loaded, but no rules active",
+      "hosts": 3
+    },
+    {
+      "id": "KRNL-5820",
+      "text": "If not required, consider explicit disabling of core dump in /etc/security/limits.conf file",
+      "hosts": 3
+    },
+    {
+      "id": "PKGS-7370",
+      "text": "Install debsums utility for the verification of packages with known good database.",
+      "hosts": 3
+    },
+    {
+      "id": "PKGS-7392",
+      "text": "Found one or more vulnerable packages.",
+      "hosts": 3
+    },
+    {
+      "id": "PKGS-7392",
+      "text": "Update your system with apt-get update, apt-get upgrade, apt-get dist-upgrade and/or unattended-upgrades",
+      "hosts": 3
+    },
+    {
+      "id": "PKGS-7420",
+      "text": "Consider using a tool to automatically apply upgrades",
+      "hosts": 3
+    },
+    {
+      "id": "TOOL-5002",
+      "text": "Determine if automation tools are present for system management",
+      "hosts": 3
+    },
+    {
+      "id": "USB-1000",
+      "text": "Disable drivers like USB storage when not used, to prevent unauthorized storage or data theft",
+      "hosts": 3
+    }
+  ],
+  "remaining": [
+    {
+      "id": "ACCT-9622",
+      "text": "Enable process accounting",
+      "hosts": 3,
+      "why": ""
+    },
+    {
+      "id": "ACCT-9628",
+      "text": "Enable auditd to collect audit information",
+      "hosts": 3,
+      "why": "Container lab: auditd needs the host kernel. Enabled on real VMs."
+    },
+    {
+      "id": "AUTH-9230",
+      "text": "Configure password hashing rounds in /etc/login.defs",
+      "hosts": 3,
+      "why": "Not applicable: nobody logs in with a password (key-only SSH)."
+    },
+    {
+      "id": "AUTH-9262",
+      "text": "Install a PAM module for password strength testing like pam_cracklib or pam_passwdqc",
+      "hosts": 3,
+      "why": "Not applicable: nobody logs in with a password (key-only SSH)."
+    },
+    {
+      "id": "AUTH-9284",
+      "text": "Look at the locked accounts and consider removing them",
+      "hosts": 3,
+      "why": "Locked system accounts are normal on Ubuntu; reviewed, nothing to remove."
+    },
+    {
+      "id": "AUTH-9286",
+      "text": "Configure maximum password age in /etc/login.defs",
+      "hosts": 3,
+      "why": "Not applicable: nobody logs in with a password (key-only SSH)."
+    },
+    {
+      "id": "AUTH-9286",
+      "text": "Configure minimum password age in /etc/login.defs",
+      "hosts": 3,
+      "why": "Not applicable: nobody logs in with a password (key-only SSH)."
+    },
+    {
+      "id": "BOOT-5264",
+      "text": "Consider hardening system services",
+      "hosts": 3,
+      "why": "Per-service systemd sandboxing is applied to the app; distro services keep their defaults."
+    },
+    {
+      "id": "DEB-0810",
+      "text": "Install apt-listbugs to display a list of critical bugs prior to each APT installation.",
+      "hosts": 3,
+      "why": "apt-listbugs is a Debian (not Ubuntu) tool; not useful here."
+    },
+    {
+      "id": "FILE-6310",
+      "text": "To decrease the impact of a full /home file system, place /home on a separate partition",
+      "hosts": 3,
+      "why": "Separate partitions are decided when a server is created; out of scope for an existing server."
+    },
+    {
+      "id": "FILE-6310",
+      "text": "To decrease the impact of a full /tmp file system, place /tmp on a separate partition",
+      "hosts": 3,
+      "why": "Separate partitions are decided when a server is created; out of scope for an existing server."
+    },
+    {
+      "id": "FILE-6310",
+      "text": "To decrease the impact of a full /var file system, place /var on a separate partition",
+      "hosts": 3,
+      "why": "Separate partitions are decided when a server is created; out of scope for an existing server."
+    },
+    {
+      "id": "FILE-7524",
+      "text": "Consider restricting file permissions",
+      "hosts": 3,
+      "why": ""
+    },
+    {
+      "id": "FINT-4350",
+      "text": "Install a file integrity tool to monitor changes to critical and sensitive files",
+      "hosts": 3,
+      "why": "Next step: file integrity monitoring (AIDE) for regulated workloads."
+    },
+    {
+      "id": "FIRE-4513",
+      "text": "Check iptables rules to see which rules are currently not used",
+      "hosts": 3,
+      "why": "Informational: unused firewall rules are reviewed by hand."
+    },
+    {
+      "id": "HRDN-7230",
+      "text": "Harden the system by installing at least one malware scanner, to perform periodic file system scans",
+      "hosts": 3,
+      "why": "Optional: a malware scanner (ClamAV/rkhunter) for servers that accept uploads."
+    },
+    {
+      "id": "HTTP-6710",
+      "text": "Change the HTTPS and SSL settings for enhanced protection of sensitive data and privacy",
+      "hosts": 3,
+      "why": ""
+    },
+    {
+      "id": "KRNL-5788",
+      "text": "Determine why /vmlinuz or /boot/vmlinuz is missing on this Debian/Ubuntu system.",
+      "hosts": 3,
+      "why": "Container lab: there is no kernel image inside a container. Not seen on real VMs."
+    },
+    {
+      "id": "KRNL-6000",
+      "text": "One or more sysctl values differ from the scan profile and could be tweaked",
+      "hosts": 3,
+      "why": "Container lab: kernel settings are written but not applied inside a container."
+    },
+    {
+      "id": "LOGG-2154",
+      "text": "Enable logging to an external logging host for archiving purposes and additional protection",
+      "hosts": 3,
+      "why": "Next step: ship logs off the server (CloudWatch agent, Loki or a syslog host)."
+    },
+    {
+      "id": "LYNIS",
+      "text": "This release is more than 4 months old. Check the website or GitHub to see if there is an update available.",
+      "hosts": 3,
+      "why": "The Ubuntu package of Lynis lags behind upstream; findings are still valid."
+    },
+    {
+      "id": "NAME-4028",
+      "text": "Check DNS configuration for the dns domain name",
+      "hosts": 3,
+      "why": "Lab/cloud servers often have no DNS domain set; harmless."
+    },
+    {
+      "id": "NETW-3200",
+      "text": "Determine if protocol 'dccp' is really needed on this system",
+      "hosts": 3,
+      "why": ""
+    },
+    {
+      "id": "NETW-3200",
+      "text": "Determine if protocol 'rds' is really needed on this system",
+      "hosts": 3,
+      "why": ""
+    },
+    {
+      "id": "NETW-3200",
+      "text": "Determine if protocol 'sctp' is really needed on this system",
+      "hosts": 3,
+      "why": ""
+    },
+    {
+      "id": "NETW-3200",
+      "text": "Determine if protocol 'tipc' is really needed on this system",
+      "hosts": 3,
+      "why": ""
+    },
+    {
+      "id": "PKGS-7394",
+      "text": "Install package apt-show-versions for patch management purposes",
+      "hosts": 3,
+      "why": "Optional patch-reporting tool; unattended-upgrades already patches nightly."
+    },
+    {
+      "id": "SSH-7408",
+      "text": "Consider hardening SSH configuration",
+      "hosts": 3,
+      "why": ""
+    }
+  ],
+  "warnings_after": []
+}

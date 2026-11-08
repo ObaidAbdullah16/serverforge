@@ -1,0 +1,17 @@
+---
+# How to connect --------------------------------------------------------------
+ansible_user: ansible
+# LAB_NETWORK=compose is set inside the Jenkins agent container.
+ansible_host: "{{ inventory_hostname if lookup('ansible.builtin.env', 'LAB_NETWORK') == 'compose' else '127.0.0.1' }}"
+ansible_port: "{{ 22 if lookup('ansible.builtin.env', 'LAB_NETWORK') == 'compose' else lab_port }}"
+# Jenkins passes its stored credential in SF_SSH_KEY; on your laptop the lab key is used.
+ansible_ssh_private_key_file: "{{ lookup('ansible.builtin.env', 'SF_SSH_KEY') | default(inventory_dir ~ '/../../.keys/lab_ed25519', true) }}"
+
+# Settings shared by the roles -----------------------------------------------
+# Who may reach SSH (ufw). The lab is reached from Docker's private networks.
+sf_admin_cidrs:
+  - 10.0.0.0/8
+  - 172.16.0.0/12
+  - 192.168.0.0/16
+  - 127.0.0.0/8
+sf_domain: ""                 # no real domain in the lab -> self-signed TLS

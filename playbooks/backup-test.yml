@@ -1,0 +1,46 @@
+---
+# Proves the backup can be restored: back up, damage the data, restore, compare.
+- name: Backup and restore test
+  hosts: "{{ target | default('staging') }}"
+  become: true
+  vars:
+    data_file: "{{ app_data_dir | default('/var/lib/serverforge') }}/data/notes.json"
+  tasks:
+    - name: Make sure there is something to protect
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:8000/api/notes"
+        method: POST
+        body_format: json
+        body: { text: "backup test {{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}" }
+        status_code: 201
+
+    - name: Checksum of the data before
+      ansible.builtin.stat:
+        path: "{{ data_file }}"
+        checksum_algorithm: sha256
+      register: before
+
+    - name: Run the backup now (same as the nightly timer)
+      ansible.builtin.systemd_service:
+        name: serverforge-backup.service
+        state: started
+
+    - name: Simulate an accident - the data file is deleted
+      ansible.builtin.file:
+        path: "{{ data_file }}"
+        state: absent
+
+    - name: Restore the newest backup
+      ansible.builtin.command: /usr/local/sbin/serverforge-restore
+      changed_when: true
+
+    - name: Checksum of the data after
+      ansible.builtin.stat:
+        path: "{{ data_file }}"
+        checksum_algorithm: sha256
+      register: after
+
+    - name: The restored data is identical
+      ansible.builtin.assert:
+        that: after.stat.exists and after.stat.checksum == before.stat.checksum
+        success_msg: "Restore OK: {{ data_file }} is byte-for-byte identical"

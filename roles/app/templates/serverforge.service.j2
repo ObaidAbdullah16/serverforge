@@ -1,0 +1,57 @@
+# {{ ansible_managed }}
+[Unit]
+Description=ServerForge demo app ({{ app_env }})
+After=network-online.target
+Wants=network-online.target
+# Stop restarting after 5 crashes in a minute: a broken release should fail
+# loudly (and be rolled back by deploy.yml), not flap forever.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User={{ app_user }}
+Group={{ app_user }}
+WorkingDirectory={{ app_root }}/current
+Environment=SF_BIND=127.0.0.1
+Environment=SF_PORT={{ app_port }}
+Environment=SF_DATA_DIR={{ app_data_dir }}/data
+Environment=SF_ENV={{ app_env }}
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 -m serverforge_app
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=10
+{% if app_systemd_hardening %}
+
+# --- Sandbox: what the app may NOT do (see `systemd-analyze security serverforge`)
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ReadWritePaths={{ app_data_dir }}/data
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+UMask=0077
+{% endif %}
+
+[Install]
+WantedBy=multi-user.target

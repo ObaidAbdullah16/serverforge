@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  role_name: backup
+  author: Obaid Abdullah
+  description: Nightly data backups with checksums, retention, optional S3 copy and a restore script
+  license: MIT
+  min_ansible_version: "2.17"
+  platforms:
+    - name: Ubuntu
+      versions: [jammy, noble]
+dependencies: []

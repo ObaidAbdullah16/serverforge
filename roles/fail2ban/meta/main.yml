@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  role_name: fail2ban
+  author: Obaid Abdullah
+  description: fail2ban jails for SSH and nginx rate-limit offenders, banning through ufw
+  license: MIT
+  min_ansible_version: "2.17"
+  platforms:
+    - name: Ubuntu
+      versions: [jammy, noble]
+dependencies: []

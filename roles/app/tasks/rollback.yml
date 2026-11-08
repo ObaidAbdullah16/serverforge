@@ -1,0 +1,48 @@
+---
+# Goes back one release (the newest one older than "current") with a health check.
+- name: Find releases
+  ansible.builtin.find:
+    paths: "{{ app_root }}/releases"
+    file_type: directory
+  register: app_releases
+
+- name: Where does current point?
+  ansible.builtin.stat:
+    path: "{{ app_root }}/current"
+  register: app_current
+
+- name: Pick the release before the current one
+  ansible.builtin.set_fact:
+    app_rollback_to: "{{ app_sorted | select('lt', app_current.stat.lnk_source) | list | last | default('') }}"
+  vars:
+    app_sorted: "{{ app_releases.files | map(attribute='path') | sort }}"
+
+- name: There must be an older release
+  ansible.builtin.assert:
+    that: app_rollback_to | length > 0
+    fail_msg: "No release older than {{ app_current.stat.lnk_source | default('nothing') | basename }} on {{ inventory_hostname }}"
+    quiet: true
+
+- name: Read the version of the release we go back to
+  ansible.builtin.slurp:
+    src: "{{ app_rollback_to }}/VERSION"
+  register: app_rollback_version
+
+- name: Switch back
+  ansible.builtin.include_tasks: switch.yml
+  vars:
+    app_switch_to: "{{ app_rollback_to }}"
+
+- name: Check the old release is healthy
+  ansible.builtin.include_tasks: health.yml
+  vars:
+    app_expected_version: "{{ app_rollback_version.content | b64decode | trim }}"
+
+- name: Record the rollback
+  ansible.builtin.lineinfile:
+    path: "{{ app_data_dir }}/deployments.log"
+    line: "{{ {'at': now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ'), 'release': app_rollback_to | basename, 'result': 'rollback'} | to_json }}"
+    create: true
+    owner: root
+    group: root
+    mode: "0644"

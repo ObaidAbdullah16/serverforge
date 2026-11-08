@@ -1,0 +1,13 @@
+---
+galaxy_info:
+  role_name: baseline
+  author: Obaid Abdullah
+  description: Baseline hardening for Ubuntu/Debian servers (SSH, users, sysctl, patching, logs)
+  license: MIT
+  min_ansible_version: "2.17"
+  platforms:
+    - name: Ubuntu
+      versions: [jammy, noble]
+    - name: Debian
+      versions: [bookworm]
+dependencies: []

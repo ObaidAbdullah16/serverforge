@@ -1,0 +1,6 @@
+// {{ ansible_managed }}
+// Security updates are installed every night by unattended-upgrades.
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+Unattended-Upgrade::Automatic-Reboot "{{ baseline_auto_reboot | bool | lower }}";
+Unattended-Upgrade::Automatic-Reboot-Time "{{ baseline_auto_reboot_time }}";

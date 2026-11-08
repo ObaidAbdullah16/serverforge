@@ -1,0 +1,12 @@
+# Checks skipped on purpose for a short-lived demo lab. Each is a conscious
+# cost/benefit decision, listed in docs/SECURITY.md as "what I would add for a client".
+skip-check:
+  - CKV_AWS_126   # Detailed monitoring: costs extra; node_exporter covers metrics
+  - CKV_AWS_135   # EBS optimized: set to true already (t4g is EBS-optimized by default)
+  - CKV2_AWS_41   # IAM instance profile: the servers make no AWS API calls
+  - CKV2_AWS_11   # VPC flow logs: cost; nothing else runs in this VPC
+  - CKV_AWS_130   # Public IPs in subnet: the lab has no NAT/bastion on purpose (cost)
+  - CKV_AWS_260   # Port 80 open: only redirects to HTTPS and serves Let's Encrypt challenges
+  - CKV_AWS_382   # Egress to anywhere: apt updates and Let's Encrypt; restricted egress needs a proxy
+  - CKV2_AWS_5    # SG attached check: false positive with for_each instances
+  - CKV_AWS_394   # AZ pinning: the lab uses whichever zone comes first, on purpose

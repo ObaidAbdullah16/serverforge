@@ -1,0 +1,48 @@
+---
+- name: Install fail2ban
+  ansible.builtin.apt:
+    name: [fail2ban, python3-systemd]
+    state: present
+
+- name: Configure jails
+  ansible.builtin.template:
+    src: jail.local.j2
+    dest: /etc/fail2ban/jail.local
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart fail2ban
+
+- name: Make sure the nginx log exists before fail2ban watches it
+  ansible.builtin.file:
+    path: /var/log/nginx
+    state: directory
+    mode: "0755"
+  when: fail2ban_nginx_jail
+
+- name: Make sure the nginx error log exists
+  ansible.builtin.copy:
+    content: ""
+    dest: /var/log/nginx/error.log
+    force: false
+    owner: root
+    group: adm
+    mode: "0640"
+  when: fail2ban_nginx_jail
+
+- name: Start fail2ban
+  ansible.builtin.systemd_service:
+    name: fail2ban
+    enabled: true
+    state: started
+
+- name: Apply configuration changes now (so the check below sees them)
+  ansible.builtin.meta: flush_handlers
+
+- name: Check the SSH jail is active
+  ansible.builtin.command: fail2ban-client status sshd
+  register: fail2ban_sshd
+  changed_when: false
+  retries: 5
+  delay: 2
+  until: fail2ban_sshd.rc == 0

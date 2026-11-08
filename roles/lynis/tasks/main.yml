@@ -1,0 +1,30 @@
+---
+- name: Install Lynis
+  ansible.builtin.apt:
+    name: lynis
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+    lock_timeout: 300        # a fresh server may be running its first automatic update
+
+- name: Report directory
+  ansible.builtin.file:
+    path: "{{ lynis_report | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+# An audit only reads the system, so it never "changes" anything.
+- name: Run the audit (about a minute)
+  ansible.builtin.command:
+    cmd: >-
+      lynis audit system --quick --no-colors --quiet
+      --report-file {{ lynis_report }} --log-file {{ lynis_log }}
+  changed_when: false
+
+- name: Copy the report to the controller
+  ansible.builtin.fetch:
+    src: "{{ lynis_report }}"
+    dest: "{{ lynis_fetch_dir }}/{{ inventory_hostname }}.dat"
+    flat: true

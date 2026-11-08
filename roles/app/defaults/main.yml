@@ -1,0 +1,20 @@
+---
+app_name: serverforge
+app_user: serverforge
+app_root: /opt/serverforge            # releases/<timestamp>-<version>/ and the "current" symlink
+app_data_dir: /var/lib/serverforge    # data/ (notes) + deployments.log - survives every release
+app_port: 8000
+app_env: "{{ sf_env | default('dev') }}"
+app_keep_releases: 3                  # old releases kept for instant rollback
+
+# Set by scripts/deploy.sh / Jenkins: path (on the machine running Ansible) to a
+# tarball built by scripts/build-app.sh, with its .sha256 file next to it.
+app_artifact: ""
+
+# Health gate after every release: up to 15 tries, 2 seconds apart.
+app_health_retries: 15
+app_health_delay: 2
+
+# systemd sandboxing for the service. Leave on; it is the cheapest security
+# layer you will ever add.
+app_systemd_hardening: true

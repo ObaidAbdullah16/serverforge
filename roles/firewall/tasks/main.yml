@@ -1,0 +1,86 @@
+---
+- name: Refuse to enable a firewall that would lock us out
+  ansible.builtin.assert:
+    that: firewall_ssh_cidrs | length > 0
+    fail_msg: >-
+      firewall_ssh_cidrs (sf_admin_cidrs) is empty: enabling ufw now would block SSH
+      for everyone, including Ansible. Set sf_admin_cidrs in the inventory.
+    quiet: true
+
+- name: Install ufw
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+
+# Allow rules first, enable last: SSH is never closed, not even for a second.
+- name: Allow SSH from admin networks only (rate limited)
+  community.general.ufw:
+    rule: limit
+    port: "{{ firewall_ssh_port | string }}"
+    proto: tcp
+    src: "{{ item }}"
+    comment: sf:ssh-admin
+  loop: "{{ firewall_ssh_cidrs }}"
+
+- name: Allow public web traffic
+  community.general.ufw:
+    rule: allow
+    port: "{{ item | string }}"
+    proto: tcp
+    comment: sf:web
+  loop: "{{ firewall_public_tcp_ports }}"
+
+- name: Extra allow rules
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.port | string }}"
+    proto: "{{ item.proto | default('tcp') }}"
+    src: "{{ item.src }}"
+    comment: "sf:{{ item.comment | default('extra') }}"
+  loop: "{{ firewall_extra_rules }}"
+  loop_control:
+    label: "{{ item.port }}/{{ item.proto | default('tcp') }} from {{ item.src }}"
+
+- name: Default policies (deny in, allow out, no routing)
+  community.general.ufw:
+    direction: "{{ item.direction }}"
+    default: "{{ item.policy }}"
+  loop:
+    - { direction: incoming, policy: deny }
+    - { direction: outgoing, policy: allow }
+    - { direction: routed, policy: deny }
+
+- name: Enable the firewall and log blocked packets
+  community.general.ufw:
+    state: enabled
+    logging: "{{ firewall_logging }}"
+
+# Ansible only manages the rules it knows about. A rule someone added by hand
+# ("just open 8080 for a minute") would stay forever without this check.
+# Every rule we create carries a "sf:" comment; anything else is unmanaged.
+- name: List the firewall rules
+  ansible.builtin.command: ufw show added
+  register: firewall_added
+  changed_when: false
+  check_mode: false          # read-only, so it also runs during drift checks
+
+- name: Find rules that are not in the code
+  ansible.builtin.set_fact:
+    firewall_unmanaged: >-
+      {{ firewall_added.stdout_lines
+         | select('match', '^ufw ')
+         | reject('search', "comment 'sf:")
+         | map('regex_replace', '^ufw ', '')
+         | list }}
+
+- name: Report unmanaged rules (shows as "changed" in drift checks)
+  ansible.builtin.debug:
+    msg: "Firewall rules not in the code: {{ firewall_unmanaged }}"
+  changed_when: firewall_unmanaged | length > 0
+  when: firewall_unmanaged | length > 0
+
+- name: Remove unmanaged rules
+  ansible.builtin.command: "ufw delete {{ item }}"
+  loop: "{{ firewall_unmanaged }}"
+  changed_when: true
+  when: firewall_remove_unmanaged

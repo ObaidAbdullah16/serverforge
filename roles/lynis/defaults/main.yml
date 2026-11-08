@@ -1,0 +1,8 @@
+---
+# Lynis (open source, by CISOfy) audits a server and scores it 0-100
+# ("hardening index"). We run it before and after hardening to show the change.
+lynis_report: /var/log/serverforge-lynis/report.dat
+lynis_log: /var/log/serverforge-lynis/lynis.log
+# Where the reports are copied to on the machine running Ansible.
+# audit.yml sets this to reports/raw/<label>.
+lynis_fetch_dir: "{{ playbook_dir }}/../reports/raw/latest"

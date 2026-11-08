@@ -1,0 +1,21 @@
+# {{ ansible_managed }}
+[DEFAULT]
+bantime  = {{ fail2ban_bantime }}
+findtime = {{ fail2ban_findtime }}
+maxretry = {{ fail2ban_maxretry }}
+ignoreip = {{ fail2ban_ignoreip | join(' ') }}
+banaction = {{ fail2ban_banaction }}
+# Ubuntu 24.04 servers log to the systemd journal, not /var/log/auth.log
+backend  = systemd
+
+[sshd]
+enabled = true
+mode    = aggressive
+{% if fail2ban_nginx_jail %}
+
+[nginx-limit-req]
+enabled  = true
+backend  = auto
+logpath  = /var/log/nginx/error.log
+maxretry = 10
+{% endif %}

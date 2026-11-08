@@ -1,0 +1,99 @@
+# Jenkins Configuration as Code (JCasC). ${VAR} values come from the container's
+# environment (lab/docker-compose.yml); ${readFile:...} reads Docker secrets.
+jenkins:
+  systemMessage: "ServerForge lab Jenkins - configured from jenkins/casc.yaml"
+  # The controller only schedules work; builds run on the agent (best practice:
+  # a build can never touch the controller's own files and secrets).
+  numExecutors: 0
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: admin
+          password: "${JENKINS_ADMIN_PASSWORD}"
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+  nodes:
+    - permanent:
+        name: lab-agent
+        labelString: "ansible lab"
+        numExecutors: 2
+        remoteFS: /home/jenkins/agent
+        mode: EXCLUSIVE
+        launcher:
+          ssh:
+            host: jenkins-agent
+            port: 22
+            credentialsId: agent-ssh
+            javaPath: /opt/java/openjdk/bin/java
+            launchTimeoutSeconds: 60
+            maxNumRetries: 10
+            retryWaitTime: 15
+            # Trust the agent's host key the first time, refuse if it changes.
+            sshHostKeyVerificationStrategy:
+              manuallyTrustedKeyVerificationStrategy:
+                requireInitialManualTrust: false
+        nodeProperties:
+          - envVars:
+              env:
+                - key: LAB_NETWORK
+                  value: compose     # inventories/lab: reach servers by container name
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - basicSSHUserPrivateKey:
+              scope: SYSTEM          # only Jenkins itself may use it (to start the agent)
+              id: agent-ssh
+              username: jenkins
+              description: "Controller -> build agent"
+              privateKeySource:
+                directEntry:
+                  privateKey: "${readFile:/run/secrets/agent_key}"
+          - basicSSHUserPrivateKey:
+              scope: GLOBAL          # pipelines may use it through withCredentials
+              id: lab-ssh
+              username: ansible
+              description: "Ansible -> lab servers"
+              privateKeySource:
+                directEntry:
+                  privateKey: "${readFile:/run/secrets/lab_key}"
+
+unclassified:
+  location:
+    url: http://localhost:8085/
+
+jobs:
+  - script: |
+      pipelineJob('serverforge-release') {
+        description('Lint, test, build, deploy to staging, approve, deploy to production. Defined in Jenkinsfile.')
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote { url('${SERVERFORGE_REPO_URL}') }
+                branch('*/${SERVERFORGE_BRANCH}')
+              }
+            }
+            scriptPath('Jenkinsfile')
+            lightweight(true)
+          }
+        }
+      }
+      pipelineJob('serverforge-drift') {
+        description('Nightly: does any server differ from the code? Defined in Jenkinsfile.drift.')
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote { url('${SERVERFORGE_REPO_URL}') }
+                branch('*/${SERVERFORGE_BRANCH}')
+              }
+            }
+            scriptPath('Jenkinsfile.drift')
+            lightweight(true)
+          }
+        }
+      }

@@ -1,0 +1,12 @@
+---
+# Nightly backup of the app's data with a restore script that has been tested.
+backup_paths:
+  - "{{ app_data_dir | default('/var/lib/serverforge') }}/data"
+backup_dir: /var/backups/serverforge
+backup_keep: 7                         # newest N archives kept
+backup_on_calendar: "*-*-* 02:30:00"   # systemd timer syntax (server time = UTC)
+# Optional off-server copy, e.g. s3://my-bucket/serverforge (needs the AWS CLI and
+# an instance role). A backup that lives only on the server it protects is a copy,
+# not a backup - set this for anything real.
+backup_s3_uri: ""
+backup_service_to_stop: serverforge    # stopped during a restore

@@ -1,0 +1,24 @@
+---
+# Everything a server needs, in order. Safe to run again and again: the second
+# run should report "changed=0" (that is what idempotent means, and CI checks it).
+#
+#   ansible-playbook playbooks/site.yml                      # lab (default inventory)
+#   ansible-playbook -i inventories/aws/hosts.yml playbooks/site.yml
+- name: Wait until new servers are ready
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: SSH up and first-boot setup finished
+      ansible.builtin.include_tasks: tasks/wait-ready.yml
+
+- name: Build every server
+  hosts: all
+  become: true
+  roles:
+    - baseline      # users, SSH, kernel settings, patching, logs
+    - firewall      # ufw: deny in, allow SSH from admins + 80/443
+    - nginx         # TLS, security headers, rate limits
+    - app           # user, dirs, systemd unit (+ a release if app_artifact is set)
+    - fail2ban      # bans brute-force SSH and rate-limit offenders
+    - monitoring    # node_exporter
+    - backup        # nightly data backup + restore script

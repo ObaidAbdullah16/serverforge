@@ -1,0 +1,33 @@
+---
+# The Ubuntu package is used on purpose: security updates arrive through
+# unattended-upgrades like everything else, with no binary to babysit.
+- name: Install node_exporter
+  ansible.builtin.apt:
+    name: prometheus-node-exporter
+    state: present
+
+- name: Listen address and collectors
+  ansible.builtin.copy:
+    content: |
+      # Managed by Ansible (ServerForge monitoring role)
+      ARGS="--web.listen-address={{ monitoring_listen }} {{ monitoring_extra_args | join(' ') }}"
+    dest: /etc/default/prometheus-node-exporter
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart node_exporter
+
+- name: Let the Prometheus server(s) in
+  community.general.ufw:
+    rule: allow
+    port: "{{ monitoring_port | string }}"
+    proto: tcp
+    src: "{{ item }}"
+    comment: sf:prometheus
+  loop: "{{ monitoring_scrape_cidrs }}"
+
+- name: Start node_exporter
+  ansible.builtin.systemd_service:
+    name: prometheus-node-exporter
+    enabled: true
+    state: started

@@ -1,0 +1,77 @@
+# One click, real servers: creates 2 fresh EC2 instances, audits them, hardens
+# them with Ansible, deploys the app, audits again, publishes the before/after
+# report - and deletes everything at the end. Costs about one cent per run.
+name: Showcase on AWS
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: aws-serverforge
+  cancel-in-progress: false
+
+jobs:
+  showcase:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    environment: aws
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check configuration
+        if: vars.AWS_ROLE_ARN == ''
+        run: |
+          echo "::error::AWS_ROLE_ARN is not set: start the AWS foundation on your laptop first (bash _setup/projects.sh up foundation)"
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.13"
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
+        with:
+          terraform_version: "<1.18.0"
+          terraform_wrapper: false
+      - name: Is this repository connected to AWS?
+        if: vars.AWS_ROLE_ARN == ''
+        run: |
+          echo "::error::Not connected to AWS (no AWS_ROLE_ARN variable). AWS accounts from the new AWS sign-up cannot let GitHub log in - run it from your laptop instead: bash _setup/projects.sh up serverforge-aws (or down)"
+          exit 1
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+          role-session-name: serverforge-showcase
+      - run: pip install -r requirements.txt
+      - name: Create servers (SSH open to this runner only, throwaway key)
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+        run: bash scripts/aws-up.sh
+      - name: Audit, harden, audit again
+        env:
+          INV: aws
+          AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+        run: |
+          bash scripts/before-after.sh
+          cat reports/before-after/report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Deploy the app and smoke test
+        env:
+          INV: aws
+        run: |
+          bash scripts/build-app.sh
+          bash scripts/deploy.sh staging
+          bash scripts/deploy.sh production
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always()
+        with:
+          name: aws-hardening-report
+          path: reports/
+          if-no-files-found: ignore
+      - name: Delete everything
+        if: always()
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+        run: bash scripts/aws-down.sh

@@ -1,0 +1,11 @@
+---
+# fail2ban reads the logs and bans addresses that keep failing to log in.
+fail2ban_bantime: 1h
+fail2ban_findtime: 10m
+fail2ban_maxretry: 5
+# Never ban these (your office/VPN, the monitoring host...).
+fail2ban_ignoreip: "{{ ['127.0.0.1/8', '::1'] + (sf_admin_cidrs | default([])) }}"
+# Uses ufw to block, so bans show up in `ufw status`.
+fail2ban_banaction: ufw
+# Also ban clients that nginx rate-limits again and again (needs the nginx role).
+fail2ban_nginx_jail: true

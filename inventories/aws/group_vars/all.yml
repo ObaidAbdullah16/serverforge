@@ -1,0 +1,10 @@
+---
+# AWS lab. hosts.yml next to this file is written by scripts/aws-up.sh from the
+# Terraform outputs (public IPs and your admin IP change, so it is not in Git).
+ansible_user: ubuntu
+ansible_ssh_private_key_file: "{{ lookup('ansible.builtin.env', 'SF_SSH_KEY') | default(inventory_dir ~ '/../../.keys/aws_ed25519', true) }}"
+
+# Optional: a domain pointing at the server turns on Let's Encrypt (nginx role).
+sf_domain: "{{ lookup('ansible.builtin.env', 'SF_DOMAIN') | default('', true) }}"
+nginx_letsencrypt_email: "{{ lookup('ansible.builtin.env', 'SF_LETSENCRYPT_EMAIL') | default('', true) }}"
+# sf_admin_cidrs (who may SSH in) is written into hosts.yml by aws-up.sh.

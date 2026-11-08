@@ -1,0 +1,237 @@
+---
+- name: Check this is a system the roles were written for
+  ansible.builtin.assert:
+    that: >-
+      (ansible_facts['distribution'] == 'Ubuntu' and ansible_facts['distribution_major_version'] | int >= 22)
+      or (ansible_facts['distribution'] == 'Debian' and ansible_facts['distribution_major_version'] | int >= 12)
+    fail_msg: "ServerForge supports Ubuntu 22.04/24.04 and Debian 12+, found {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}"
+    quiet: true
+
+# --- Packages -----------------------------------------------------------------
+- name: Install baseline packages
+  ansible.builtin.apt:
+    name: "{{ baseline_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+    lock_timeout: 300        # a fresh server may be running its first automatic update
+
+- name: Apply pending updates now (unattended-upgrades keeps it that way afterwards)
+  ansible.builtin.apt:
+    upgrade: safe
+  when: baseline_upgrade_now
+
+- name: Collect performance history (sysstat)
+  ansible.builtin.lineinfile:
+    path: /etc/default/sysstat
+    regexp: '^ENABLED='
+    line: 'ENABLED="true"'
+
+- name: Install auditd and time sync (real VMs only)
+  ansible.builtin.apt:
+    name: [auditd, chrony]
+    state: present
+  when: not baseline_in_container
+
+- name: Remove packages that only add attack surface
+  ansible.builtin.apt:
+    name: "{{ baseline_remove_packages }}"
+    state: absent
+    purge: true
+
+# --- Time ---------------------------------------------------------------------
+- name: Set the time zone
+  ansible.builtin.file:
+    src: "/usr/share/zoneinfo/{{ baseline_timezone }}"
+    dest: /etc/localtime
+    state: link
+    force: true
+
+- name: Record the time zone for tools that read /etc/timezone
+  ansible.builtin.copy:
+    content: "{{ baseline_timezone }}\n"
+    dest: /etc/timezone
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Keep the clock in sync and audit important events (real VMs only)
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop: [chrony, auditd]
+  when: not baseline_in_container
+
+# --- People and SSH -------------------------------------------------------------
+# Order matters: the group and our own login must exist BEFORE sshd starts
+# enforcing "AllowGroups", or we would lock ourselves out of the server.
+- name: Create the group allowed to log in over SSH
+  ansible.builtin.group:
+    name: "{{ baseline_ssh_group }}"
+    system: true
+
+- name: Keep the automation user (the one running this play) able to log in
+  ansible.builtin.user:
+    name: "{{ ansible_user }}"
+    groups: "{{ baseline_ssh_group }}"
+    append: true
+
+- name: Create admin accounts
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    shell: /bin/bash
+    groups: ["sudo", "{{ baseline_ssh_group }}"]
+    append: true
+    password: "!"                   # locked password: key-only login
+    update_password: on_create
+  loop: "{{ baseline_admins }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Install admin SSH keys (only the listed key is kept)
+  ansible.posix.authorized_key:
+    user: "{{ item.name }}"
+    key: "{{ item.pubkey }}"
+    exclusive: true
+  loop: "{{ baseline_admins }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Let admins use sudo without a password (they have no password)
+  ansible.builtin.copy:
+    content: |
+      # Managed by Ansible (ServerForge baseline). Admins log in with SSH keys only.
+      %sudo ALL=(ALL:ALL) NOPASSWD: ALL
+    dest: /etc/sudoers.d/80-serverforge-admins
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
+  when: baseline_admins | length > 0
+
+- name: Login banners (SSH and console)
+  ansible.builtin.copy:
+    content: "{{ baseline_banner }}"
+    dest: "{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [/etc/issue.net, /etc/issue]
+
+- name: New files private to their group by default (umask 027)
+  ansible.builtin.lineinfile:
+    path: /etc/login.defs
+    regexp: '^UMASK\s'
+    line: "UMASK\t\t027"
+
+- name: Close idle interactive shells
+  ansible.builtin.copy:
+    content: |
+      # Managed by Ansible (ServerForge baseline)
+      TMOUT={{ baseline_shell_timeout }}
+      readonly TMOUT
+      export TMOUT
+    dest: /etc/profile.d/99-serverforge-timeout.sh
+    owner: root
+    group: root
+    mode: "0644"
+  when: baseline_shell_timeout | int > 0
+
+- name: Harden the SSH server
+  ansible.builtin.template:
+    src: sshd-serverforge.conf.j2
+    dest: /etc/ssh/sshd_config.d/10-serverforge.conf
+    owner: root
+    group: root
+    mode: "0600"
+    # sshd checks the new file before it replaces the old one, so a typo here
+    # can never leave the server without a working SSH daemon.
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Reload ssh
+
+# --- Kernel and network -------------------------------------------------------
+- name: Does this server have IPv6? (net.ipv6 settings do not exist without it)
+  ansible.builtin.stat:
+    path: /proc/net/if_inet6
+  register: baseline_ipv6
+
+- name: Kernel and network hardening
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value | string }}"
+    sysctl_file: /etc/sysctl.d/99-serverforge.conf
+    sysctl_set: "{{ not baseline_in_container }}"
+    reload: "{{ not baseline_in_container }}"
+    state: present
+  loop: >-
+    {{ baseline_sysctl | dict2items
+       if baseline_ipv6.stat.exists
+       else baseline_sysctl | dict2items | rejectattr('key', 'search', '^net[.]ipv6[.]') }}
+  loop_control:
+    label: "{{ item.key }} = {{ item.value }}"
+
+- name: Never load kernel modules this server does not need
+  ansible.builtin.copy:
+    content: |
+      # Managed by Ansible (ServerForge baseline)
+      {% for m in baseline_disabled_modules %}
+      install {{ m }} /bin/false
+      blacklist {{ m }}
+      {% endfor %}
+    dest: /etc/modprobe.d/serverforge-disabled.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Disable core dumps (they can contain passwords and keys)
+  ansible.builtin.copy:
+    content: |
+      # Managed by Ansible (ServerForge baseline)
+      * hard core 0
+    dest: /etc/security/limits.d/10-serverforge-coredump.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+# --- Patching ---------------------------------------------------------------------
+- name: Turn on automatic security updates
+  ansible.builtin.copy:
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+      APT::Periodic::AutocleanInterval "7";
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Configure what automatic updates may do
+  ansible.builtin.template:
+    src: 52serverforge-unattended-upgrades.j2
+    dest: /etc/apt/apt.conf.d/52serverforge-unattended-upgrades
+    owner: root
+    group: root
+    mode: "0644"
+
+# --- Logs ---------------------------------------------------------------------------
+- name: Create the journald drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Keep the journal on disk, with a size limit
+  ansible.builtin.copy:
+    content: |
+      # Managed by Ansible (ServerForge baseline)
+      [Journal]
+      Storage=persistent
+      SystemMaxUse={{ baseline_journal_max_use }}
+    dest: /etc/systemd/journald.conf.d/50-serverforge.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart journald

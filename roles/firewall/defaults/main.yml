@@ -1,0 +1,15 @@
+---
+# ufw: deny everything coming in, then open only what this server serves.
+firewall_ssh_port: 22
+# SSH is only accepted from these networks (and rate-limited: ufw "limit"
+# blocks an address that opens 6+ connections in 30 seconds).
+firewall_ssh_cidrs: "{{ sf_admin_cidrs | default([]) }}"
+# Open to everyone: the web server.
+firewall_public_tcp_ports: [80, 443]
+# Extra rules, e.g. Prometheus scraping node_exporter from a monitoring host:
+#   firewall_extra_rules:
+#     - { port: 9100, proto: tcp, src: 10.0.5.10/32, comment: prometheus }
+firewall_extra_rules: []
+firewall_logging: low
+# Delete firewall rules that are not in this code (someone opened a port by hand).
+firewall_remove_unmanaged: true

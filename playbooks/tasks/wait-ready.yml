@@ -1,0 +1,19 @@
+---
+# Fresh cloud servers are still setting themselves up for a minute or two after
+# they boot: SSH may refuse connections and cloud-init (or the first automatic
+# update) may hold the package manager lock. Wait for both instead of failing.
+- name: Wait for SSH (fresh EC2 instances take a minute)
+  ansible.builtin.wait_for_connection:
+    timeout: 300
+
+- name: Is cloud-init installed?
+  ansible.builtin.stat:
+    path: /usr/bin/cloud-init
+  register: sf_cloud_init
+
+- name: Wait until cloud-init has finished the first-boot setup
+  ansible.builtin.command: cloud-init status --wait
+  register: sf_cloud_init_status
+  changed_when: false
+  failed_when: sf_cloud_init_status.rc not in [0, 2]   # 2 = done, with warnings
+  when: sf_cloud_init.stat.exists

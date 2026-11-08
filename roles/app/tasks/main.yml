@@ -1,0 +1,58 @@
+---
+# Prepares the server for the app: user, directories, systemd unit.
+# Releases themselves are installed by deploy.yml (tasks_from: deploy).
+- name: Python for the app (standard library only)
+  ansible.builtin.apt:
+    name: python3
+    state: present
+
+- name: App user (no shell, no home, cannot log in)
+  ansible.builtin.user:
+    name: "{{ app_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    create_home: false
+    home: /nonexistent
+
+# Code is owned by root and only readable by the app: a compromised app cannot
+# rewrite itself. Data is the only place it may write.
+- name: Directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ app_root }}", owner: root, group: root, mode: "0755" }
+    - { path: "{{ app_root }}/releases", owner: root, group: root, mode: "0755" }
+    - { path: "{{ app_data_dir }}", owner: root, group: root, mode: "0755" }
+    - { path: "{{ app_data_dir }}/data", owner: "{{ app_user }}", group: "{{ app_user }}", mode: "0750" }
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Install the systemd unit
+  ansible.builtin.template:
+    src: serverforge.service.j2
+    dest: "/etc/systemd/system/{{ app_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  register: app_unit
+
+- name: Is a release installed yet?
+  ansible.builtin.stat:
+    path: "{{ app_root }}/current"
+  register: app_current
+
+- name: Enable the service (and restart it if the unit changed)
+  ansible.builtin.systemd_service:
+    name: "{{ app_name }}"
+    daemon_reload: "{{ app_unit is changed }}"
+    enabled: true
+    state: "{{ 'restarted' if app_unit is changed else 'started' }}"
+  when: app_current.stat.exists
+
+- name: Install the release given in app_artifact
+  ansible.builtin.include_tasks: deploy.yml
+  when: app_artifact | length > 0

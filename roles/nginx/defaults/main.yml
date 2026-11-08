@@ -1,0 +1,12 @@
+---
+# nginx sits in front of the app: TLS, security headers, rate limits, and it
+# hides internal endpoints (/metrics) from the internet.
+nginx_server_name: "{{ sf_domain if sf_domain | default('') | length > 0 else '_' }}"
+# selfsigned (lab / no domain) or letsencrypt (needs a real domain pointing here)
+nginx_tls_mode: "{{ 'letsencrypt' if sf_domain | default('') | length > 0 else 'selfsigned' }}"
+nginx_letsencrypt_email: ""
+nginx_upstream: "127.0.0.1:{{ app_port | default(8000) }}"
+nginx_rate_limit: 10r/s           # per client IP, for /api/
+nginx_rate_burst: 20
+nginx_client_max_body_size: 16k
+nginx_cert_dir: /etc/nginx/tls

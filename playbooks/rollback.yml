@@ -1,0 +1,13 @@
+---
+# Go back one release on every server of the target group, one at a time.
+#   ansible-playbook playbooks/rollback.yml -e target=production
+- name: "Roll back {{ target | default('staging') }}"
+  hosts: "{{ target | default('staging') }}"
+  become: true
+  serial: 1
+  max_fail_percentage: 0
+  tasks:
+    - name: Previous release with a health check
+      ansible.builtin.include_role:
+        name: app
+        tasks_from: rollback

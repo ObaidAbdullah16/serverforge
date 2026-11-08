@@ -1,0 +1,10 @@
+---
+# Only the security baseline - what the "Server Hardening" service delivers to a
+# client whose server already runs their app.
+- name: Harden servers
+  hosts: all
+  become: true
+  roles:
+    - baseline
+    - firewall
+    - fail2ban

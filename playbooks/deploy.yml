@@ -1,0 +1,37 @@
+---
+# Rolling release: one server at a time, stop at the first failure.
+#
+#   ansible-playbook playbooks/deploy.yml -e target=staging \
+#     -e app_artifact=$PWD/dist/serverforge-app-1.1.0.tar.gz
+- name: "Rolling release to {{ target | default('staging') }}"
+  hosts: "{{ target | default('staging') }}"
+  become: true
+  serial: 1                 # one server at a time: the others keep serving
+  max_fail_percentage: 0    # one failed server stops the whole rollout
+  pre_tasks:
+    - name: An artifact is required
+      ansible.builtin.assert:
+        that: app_artifact is defined and app_artifact | length > 0
+        fail_msg: "Pass -e app_artifact=/path/to/serverforge-app-<version>.tar.gz (scripts/build-app.sh makes one)"
+        quiet: true
+  tasks:
+    - name: Install the release with a health gate
+      ansible.builtin.include_role:
+        name: app
+        tasks_from: deploy
+
+  post_tasks:
+    - name: Smoke test through nginx (TLS, headers, the real path users take)
+      ansible.builtin.uri:
+        url: https://127.0.0.1/healthz
+        validate_certs: false     # self-signed in the lab; Let's Encrypt on a real domain
+        return_content: true
+      register: deploy_smoke
+      failed_when: deploy_smoke.status != 200 or deploy_smoke.json.version != app_version
+
+    - name: The security headers are there
+      ansible.builtin.assert:
+        that:
+          - deploy_smoke.content_security_policy is defined
+          - deploy_smoke.x_frame_options == 'DENY'
+        quiet: true

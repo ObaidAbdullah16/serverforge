@@ -1,0 +1,17 @@
+---
+# Run Lynis on every server and copy the reports to reports/raw/<label>/.
+#   ansible-playbook playbooks/audit.yml -e audit_label=before
+- name: Wait until new servers are ready
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: SSH up and first-boot setup finished
+      ansible.builtin.include_tasks: tasks/wait-ready.yml
+
+- name: Security audit with Lynis
+  hosts: all
+  become: true
+  vars:
+    lynis_fetch_dir: "{{ playbook_dir }}/../reports/raw/{{ audit_label | default('latest') }}"
+  roles:
+    - lynis
