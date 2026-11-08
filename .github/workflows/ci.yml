@@ -28,7 +28,7 @@ jobs:
         with:
           terraform_version: "<1.18.0"
           terraform_wrapper: false
-      - run: pip install -r requirements-dev.txt checkov shellcheck-py actionlint-py
+      - run: pip install -r requirements-dev.txt -r .github/requirements-ci.txt
       - name: YAML and Ansible lint
         run: |
           yamllint --strict .
