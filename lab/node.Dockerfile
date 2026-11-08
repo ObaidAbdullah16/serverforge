@@ -1,7 +1,7 @@
 # A throwaway "server" for the local lab: Ubuntu 24.04 with systemd and SSH, so
 # Ansible sees what it would see on a real VM (services, users, sudo, a firewall).
 # Built by scripts/lab-up.sh. Not for production use: it runs privileged.
-FROM ubuntu:24.04
+FROM ubuntu:26.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     container=docker
