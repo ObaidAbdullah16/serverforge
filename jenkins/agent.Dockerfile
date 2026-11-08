@@ -1,7 +1,7 @@
 # Jenkins build agent with Ansible and the test tools. The controller connects to
 # it over SSH (the official jenkins/ssh-agent image) and runs pipelines here.
 # Build context: the repository root (so the pinned requirements are used).
-FROM jenkins/ssh-agent:8.6.0-jdk21
+FROM jenkins/ssh-agent:9.3.3-jdk21
 
 USER root
 RUN apt-get update \
