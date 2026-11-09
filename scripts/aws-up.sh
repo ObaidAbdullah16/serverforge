@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Creates the AWS lab: VPC + 2 x t4g.nano Ubuntu 24.04 (staging, production).
-# Cost while up: ~$0.02/hour (2 instances + 2 public IPv4 addresses + disks).
+# Creates the AWS lab: VPC + 2 x t4g.micro Ubuntu 24.04 (staging, production).
+# Cost while up: ~$0.03/hour (2 instances + 2 public IPv4 addresses + disks).
+# t4g.micro is "Free tier eligible", so it also starts in an account on the AWS Free plan.
+# Another Graviton (arm64) type: SF_AWS_INSTANCE_TYPE=t4g.small bash scripts/aws-up.sh
 # Nothing is configured on the servers yet - that is Ansible's job:
 #   INV=aws bash scripts/before-after.sh     (audit, harden, audit again)
 source "$(dirname "$0")/lib.sh"
@@ -14,9 +16,13 @@ admin="$(my_cidr)"
 admin_json="$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1].split(",")))' "$admin")"
 log "SSH will be allowed from: $admin"
 
+instance_type="${SF_AWS_INSTANCE_TYPE:-t4g.micro}"
+require_launchable "$instance_type" 2      # 2 servers: web-stg-1, web-prod-1
+log "Servers: 2 x $instance_type"
+
 tf_init
 apply_args=(-input=false -var "aws_region=${AWS_REGION}" -var "admin_cidrs=${admin_json}"
-            -var "ssh_public_key=$(cat "$KEYS_DIR/aws_ed25519.pub")")
+            -var "ssh_public_key=$(cat "$KEYS_DIR/aws_ed25519.pub")" -var "instance_type=${instance_type}")
 [[ "$AUTO_APPROVE" == 1 ]] && apply_args+=(-auto-approve)
 terraform -chdir="$TF_DIR" apply "${apply_args[@]}"
 

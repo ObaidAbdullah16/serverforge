@@ -8,7 +8,7 @@ if [[ "${n:-0}" == "0" || "$n" == "None" ]]; then
   echo "serverforge-aws: DOWN (costs nothing)"
   exit 0
 fi
-echo "serverforge-aws: UP - $n instances, ~\$0.02/hour (stop: bash scripts/aws-down.sh)"
+echo "serverforge-aws: UP - $n instances, ~\$0.03/hour (stop: bash scripts/aws-down.sh)"
 # shellcheck disable=SC2016  # the backticks are JMESPath, not shell
 aws ec2 describe-instances \
   --filters "Name=tag:Project,Values=serverforge" "Name=instance-state-name,Values=pending,running,stopping,stopped" \

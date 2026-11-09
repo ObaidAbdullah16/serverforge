@@ -4,9 +4,10 @@
 #   - turns SSH password login back on, on web-prod-1
 #   - opens port 8080 in the firewall, on web-prod-1
 source "$(dirname "$0")/lib.sh"
+inv="$(inventory)" || exit 1
 ensure_ansible
 host="${1:-web-prod-1}"
-ansible "$host" -i "$(inventory)" -b -m ansible.builtin.lineinfile \
+ansible "$host" -i "$inv" -b -m ansible.builtin.lineinfile \
   -a "path=/etc/ssh/sshd_config.d/10-serverforge.conf regexp='^PasswordAuthentication' line='PasswordAuthentication yes'"
-ansible "$host" -i "$(inventory)" -b -m ansible.builtin.command -a "ufw allow 8080/tcp"
+ansible "$host" -i "$inv" -b -m ansible.builtin.command -a "ufw allow 8080/tcp"
 warn "Drift created on $host. Now run: bash scripts/drift.sh"

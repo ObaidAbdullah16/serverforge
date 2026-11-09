@@ -37,9 +37,9 @@ variable "ssh_public_key" {
 }
 
 variable "instance_type" {
-  description = "t4g.nano: 2 Graviton vCPUs (burstable), 0.5 GB RAM - enough for this app."
+  description = "t4g.micro: 2 Graviton vCPUs (burstable), 1 GB RAM. Free tier eligible, so it also starts in accounts on the AWS Free plan (t4g.nano does not). Must be a Graviton (arm64) type: the Ubuntu image is arm64."
   type        = string
-  default     = "t4g.nano"
+  default     = "t4g.micro"
 }
 
 variable "servers" {

@@ -57,9 +57,13 @@ ensure_ansible() {
 
 # play <playbook> [ansible-playbook args...]
 play() {
+  local inv
+  # Stop here when the inventory is missing. An empty -i would make Ansible try every file
+  # in the repository as an inventory and print hundreds of warnings.
+  inv="$(inventory)" || exit 1
   ensure_ansible
   mkdir -p "$REPO_ROOT/.keys"
-  ansible-playbook -i "$(inventory)" "$REPO_ROOT/playbooks/$1" "${@:2}"
+  ansible-playbook -i "$inv" "$REPO_ROOT/playbooks/$1" "${@:2}"
 }
 
 # Newest artifact in dist/ (built by build-app.sh)
@@ -100,6 +104,42 @@ tf_init() {
       printf '[state] Could not upload %s/errored.tfstate - if the state is locked, see the guide: "Error acquiring the state lock"\n' "$TF_DIR" >&2
       return 1
     fi
+  fi
+}
+
+# ---- AWS Free plan and vCPU quota -----------------------------------------------
+# Accounts from the new AWS sign-up start on the Free plan (credits only). Until the account is
+# upgraded to the Paid plan, EC2 only starts instance types marked "Free tier eligible"
+# (t3/t4g .micro and .small, c7i-flex.large, m7i-flex.large) and refuses every other type with
+# "The specified instance type is not eligible for Free Tier".
+aws_free_plan() {
+  local plan="" r
+  for r in "$AWS_REGION" us-east-1; do
+    plan="$(aws freetier get-account-plan-state --region "$r" --query accountPlanType --output text 2>/dev/null)" && break
+  done
+  case "$plan" in
+    FREE) return 0 ;;
+    PAID) return 1 ;;
+    *) [[ "${AWS_ACCOUNT_TYPE:-classic}" == project ]] ;;   # unknown: a new sign-up may still be on it
+  esac
+}
+
+# require_launchable <instance type> <count> : stop before Terraform creates anything when this
+# account cannot start <count> instances of that type (Free plan, or a new account's vCPU quota).
+require_launchable() {
+  local type="$1" count="$2" eligible vcpus quota
+  if aws_free_plan; then
+    if eligible="$(aws ec2 describe-instance-types --region "$AWS_REGION" --instance-types "$type" \
+          --filters Name=free-tier-eligible,Values=true --query 'InstanceTypes[0].InstanceType' --output text 2>/dev/null)" \
+        && [[ "$eligible" != "$type" ]]; then
+      die "$type cannot start in this account: it is on the AWS Free plan, which only starts these types: $(aws ec2 describe-instance-types --region "$AWS_REGION" --filters Name=free-tier-eligible,Values=true --query 'InstanceTypes[].InstanceType' --output text 2>/dev/null | tr '\t' ' '). Pick one of them, or upgrade the account to the Paid plan (Billing and Cost Management > Free plan; unused credits keep applying)."
+    fi
+  fi
+  vcpus="$(aws ec2 describe-instance-types --region "$AWS_REGION" --instance-types "$type" --query 'InstanceTypes[0].VCpuInfo.DefaultVCpus' --output text 2>/dev/null || true)"
+  quota="$(aws service-quotas get-service-quota --region "$AWS_REGION" --service-code ec2 --quota-code L-1216C47A --query 'Quota.Value' --output text 2>/dev/null || true)"
+  quota="${quota%%.*}"
+  if [[ "$vcpus" =~ ^[0-9]+$ && "$quota" =~ ^[0-9]+$ ]] && (( vcpus * count > quota )); then
+    die "$count x $type need $((vcpus * count)) vCPUs, but this account may only run $quota vCPUs of standard instances at once. Ask for more: Service Quotas > Amazon EC2 > 'Running On-Demand Standard (A, C, D, H, I, M, R, T, Z) instances' > Request increase (8 is plenty), then run this again."
   fi
 }
 

@@ -88,12 +88,12 @@ Two jobs come from `jenkins/casc.yaml`:
 * **serverforge-drift**: runs every night. The build turns *unstable* when a server no
   longer matches the code.
 
-## AWS lab (on demand, ~$0.02/hour)
+## AWS lab (on demand, ~$0.03/hour)
 
 Uses the shared `aws-foundation` setup (state bucket, budgets, GitHub OIDC role).
 
 ```bash
-bash scripts/aws-up.sh                     # 2 x t4g.nano, SSH open to your IP only
+bash scripts/aws-up.sh                     # 2 x t4g.micro, SSH open to your IP only
 INV=aws bash scripts/before-after.sh       # real VM scores
 bash scripts/build-app.sh && INV=aws bash scripts/deploy.sh staging
 bash scripts/aws-down.sh                   # deletes everything in AWS (--all also deletes the lab SSH key)

@@ -3,6 +3,7 @@
 # is changed, Ansible only reports what it WOULD change.
 #   exit 0 = no drift, exit 2 = drift found (details in reports/drift-<time>.txt)
 source "$(dirname "$0")/lib.sh"
+inventory >/dev/null || exit 1   # no servers to check (e.g. INV=aws before aws-up.sh)
 mkdir -p reports
 out="reports/drift-$(date -u +%Y%m%dT%H%M%SZ).txt"
 set +e

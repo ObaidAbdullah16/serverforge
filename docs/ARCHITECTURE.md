@@ -43,7 +43,7 @@ sequenceDiagram
 
 | | Lab (Docker) | AWS |
 |---|---|---|
-| Servers | `web-stg-1`, `web-prod-1`, `web-prod-2` | `web-stg-1`, `web-prod-1` (t4g.nano) |
+| Servers | `web-stg-1`, `web-prod-1`, `web-prod-2` | `web-stg-1`, `web-prod-1` (t4g.micro) |
 | Reached from laptop | 127.0.0.1:2221-2223 (SSH), 8441-8443 (HTTPS) | public IPs, SSH from your IP only |
 | Reached from Jenkins | container names on the compose network | not wired (use the Showcase workflow) |
 | Login user | `ansible` (image) | `ubuntu` (AMI) |
